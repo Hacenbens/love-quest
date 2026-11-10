@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Love Quest</title>
+<style>
+  :root { --bg:#1b1026; --panel:#2a1840; --pink:#ff5c8a; --gold:#ffd166; --text:#fbe9f0; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+         font-family: "Trebuchet MS", system-ui, sans-serif; display:flex; flex-direction:column; align-items:center; }
+  h1 { margin:16px 0 4px; color:var(--pink); letter-spacing:2px; }
+  #hud { display:flex; gap:24px; margin:6px 0 10px; font-size:15px; }
+  #hud b { color:var(--gold); }
+  canvas { background:linear-gradient(#2a1840,#120a1a); border:3px solid var(--pink); border-radius:12px;
+           max-width:calc(100vw - 32px); touch-action:none; }
+  #letter { width:min(480px, calc(100vw - 32px)); margin:14px 0 30px; padding:16px 20px; background:var(--panel);
+            border-radius:12px; border-left:4px solid var(--pink); min-height:60px; }
+  #letter p { margin:6px 0; animation:fade .8s ease; }
+  #letter .sig { color:var(--gold); text-align:right; font-style:italic; }
+  .hint { opacity:.6; font-size:13px; }
+  @keyframes fade { from { opacity:0; transform:translateY(6px);} to { opacity:1; transform:none; } }
+</style>
+</head>
+<body>
+<h1>♥ LOVE QUEST ♥</h1>
+<div id="hud">
+  <span>For <b id="player">…</b></span>
+  <span>Hearts <b id="hearts">0</b></span>
+  <span>Lives <b id="lives">♥♥♥</b></span>
+</div>
+<canvas id="game" width="480" height="420"></canvas>
+<div id="letter"><p class="hint">Catch the pink hearts, dodge the broken ones. Every few hearts unlocks a line of a letter written just for you. (← → or mouse / touch)</p></div>
+
+<script>
+const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+let quest, hearts = 0, lives = 3, shown = 0, over = false, done = false;
+const basket = { x: 210, w: 70, y: 390 };
+let drops = [], keys = {}, t = 0;
+
+addEventListener('keydown', e => keys[e.key] = true);
+addEventListener('keyup',   e => keys[e.key] = false);
+cv.addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect();
+  basket.x = (e.clientX - r.left) * (cv.width / r.width) - basket.w / 2;
+});
+
+async function start() {
+  quest = await (await fetch('/api/quest')).json();
+  $('player').textContent = quest.playerName;
+  requestAnimationFrame(loop);
+}
+
+async function refreshLetter() {
+  const p = await (await fetch('/api/letter?hearts=' + hearts)).json();
+  const box = $('letter');
+  if (shown === 0 && p.unlocked.length) box.innerHTML = '';
+  for (; shown < p.unlocked.length; shown++) {
+    const el = document.createElement('p'); el.textContent = p.unlocked[shown]; box.appendChild(el);
+  }
+  if (p.complete && !done) {
+    done = true;
+    const sig = document.createElement('p'); sig.className = 'sig'; sig.textContent = '— ' + p.from; box.appendChild(sig);
+  }
+}
+
+function spawn() {
+  const broken = Math.random() < 0.22 + Math.min(hearts, 40) * 0.004;
+  drops.push({ x: 15 + Math.random() * (cv.width - 30), y: -20, v: 1.6 + Math.random() * 1.4 + hearts * 0.03, broken });
+}
+
+function drawHeart(x, y, s, color, broken) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = color;
+  ctx.beginPath(); ctx.moveTo(0, 6);
+  ctx.bezierCurveTo(-14, -4, -8, -16, 0, -8); ctx.bezierCurveTo(8, -16, 14, -4, 0, 6); ctx.fill();
+  if (broken) { ctx.strokeStyle = '#1b1026'; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.moveTo(0, -8); ctx.lineTo(-3, -2); ctx.lineTo(2, 1); ctx.lineTo(0, 6); ctx.stroke(); }
+  ctx.restore();
+}
+
+function loop() {
+  t++;
+  if (keys.ArrowLeft)  basket.x -= 6;
+  if (keys.ArrowRight) basket.x += 6;
+  basket.x = Math.max(0, Math.min(cv.width - basket.w, basket.x));
+  if (!over && !done && t % 38 === 0) spawn();
+
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  for (const d of drops) {
+    d.y += d.v;
+    const caught = d.y > basket.y - 10 && d.y < basket.y + 12 && d.x > basket.x && d.x < basket.x + basket.w;
+    if (caught) {
+      d.gone = true;
+      if (d.broken) { lives--; if (lives <= 0) over = true; }
+      else { hearts++; if (hearts % quest.heartsPerLine === 0) refreshLetter(); }
+    }
+    if (d.y > cv.height + 20) d.gone = true;
+    drawHeart(d.x, d.y, 1.1, d.broken ? '#7a6a8a' : '#ff5c8a', d.broken);
+  }
+  drops = drops.filter(d => !d.gone);
+
+  ctx.fillStyle = '#ffd166';
+  ctx.fillRect(basket.x, basket.y, basket.w, 12);
+  ctx.fillRect(basket.x, basket.y - 10, 5, 12); ctx.fillRect(basket.x + basket.w - 5, basket.y - 10, 5, 12);
+
+  $('hearts').textContent = hearts;
+  $('lives').textContent = '♥'.repeat(Math.max(lives, 0)) || '—';
+
+  if (over || done) {
+    ctx.fillStyle = 'rgba(27,16,38,.75)'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = done ? '#ffd166' : '#ff5c8a'; ctx.font = 'bold 26px Trebuchet MS'; ctx.textAlign = 'center';
+    ctx.fillText(done ? 'You unlocked my whole heart ♥' : 'Heartbroken… click to retry', cv.width / 2, cv.height / 2);
+    if (over && !done) cv.onclick = () => { lives = 3; over = false; drops = []; cv.onclick = null; };
+  }
+  requestAnimationFrame(loop);
+}
+
+start();
+</script>
+</body>
+</html>

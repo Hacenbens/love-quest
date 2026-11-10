@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LoveQuest.Web/LoveQuest.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LoveQuest.Tests/LoveQuest.Tests.csproj" />
+  </Folder>
+</Solution>
