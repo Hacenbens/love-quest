@@ -32,9 +32,14 @@ pipeline {
                 sh 'dotnet publish src/LoveQuest.Web/LoveQuest.Web.csproj --configuration $CONFIGURATION --no-build --output publish'
             }
         }
+        stage('Package Artifact') {
+            steps {
+                sh 'tar -czf love-quest-publish.tar.gz -C publish .'
+            }
+        }
         stage('Archive') {
             steps {
-                archiveArtifacts artifacts: 'publish/**', fingerprint: true
+                archiveArtifacts artifacts: 'publish/**,love-quest-publish.tar.gz', fingerprint: true
             }
         }
     }
